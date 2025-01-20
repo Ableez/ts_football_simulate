@@ -57,6 +57,7 @@ export class LeagueSimulator {
     }
 
     const globalSchedule = [];
+    const TIME_BUFFER = 5; // Minimum time difference between matches for same team
 
     for (const league of arr) {
       const schedule: [number, [string, string]][][] = [];
@@ -69,6 +70,60 @@ export class LeagueSimulator {
       const teamCount = teamsList.length;
       const mid = teamCount / 2;
 
+      // Keep track of all scheduled matches for each team
+      const teamSchedules: { [team: string]: number[] } = {};
+      teamsList.forEach((team) => {
+        if (team !== "BYE") {
+          teamSchedules[team] = [];
+        }
+      });
+
+      // Helper function to get all valid times for a pair of teams
+      const getValidTimes = (
+        team1: string,
+        team2: string,
+        excludeTime?: number,
+        strictMode: boolean = true
+      ): number[] => {
+        return times.filter((time) => {
+          if (excludeTime !== undefined && time === excludeTime) return false;
+
+          const team1Times = teamSchedules[team1] || [];
+          const team2Times = teamSchedules[team2] || [];
+
+          if (strictMode) {
+            // Strict mode: Check buffer
+            return ![...team1Times, ...team2Times].some(
+              (scheduledTime) => Math.abs(scheduledTime - time) < TIME_BUFFER
+            );
+          } else {
+            // Relaxed mode: Just ensure no direct conflicts
+            return ![...team1Times, ...team2Times].includes(time);
+          }
+        });
+      };
+
+      // Helper function to get least conflicting time
+      const getLeastConflictingTime = (
+        team1: string,
+        team2: string,
+        excludeTime?: number
+      ): number => {
+        const timeScores = times
+          .filter((t) => t !== excludeTime)
+          .map((time) => {
+            const team1Times = teamSchedules[team1] || [];
+            const team2Times = teamSchedules[team2] || [];
+            const conflicts = [...team1Times, ...team2Times].filter(
+              (scheduledTime) => Math.abs(scheduledTime - time) < TIME_BUFFER
+            ).length;
+            return { time, conflicts };
+          });
+
+        timeScores.sort((a, b) => a.conflicts - b.conflicts);
+        return timeScores[0].time;
+      };
+
       for (let i = 0; i < teamCount - 1; i++) {
         const round: [number, [string, string]][] = [];
         const firstHalf = teamsList.slice(0, mid);
@@ -76,51 +131,72 @@ export class LeagueSimulator {
 
         for (let j = 0; j < mid; j++) {
           if (firstHalf[j] !== "BYE" && secondHalf[j] !== "BYE") {
-            const firstHalfTime =
-              times[Math.floor(Math.random() * times.length)];
+            // Try to find times with increasingly relaxed constraints
+            let validTimesForFirst = getValidTimes(firstHalf[j], secondHalf[j]);
 
-            const secondHalfTime = times.filter((t) => t !== firstHalfTime)[
-              Math.floor(Math.random() * (times.length - 1))
-            ];
-
-            round.push([firstHalfTime, [firstHalf[j], secondHalf[j]]]);
-            if (
-              `${secondHalfTime}_${secondHalf[j]}` !==
-              `${firstHalfTime}_${firstHalf[j]}`
-            ) {
-              round.push([secondHalfTime, [secondHalf[j], firstHalf[j]]]);
-            } else {
-              console.log("--------------------------------");
-              console.log("--------------------------------");
-              console.log(
-                "CAUGHT A COPYCAT!!!",
-                `${secondHalfTime}_${secondHalf[j]}`,
-                `${firstHalfTime}_${firstHalf[j]}`
+            if (validTimesForFirst.length === 0) {
+              validTimesForFirst = getValidTimes(
+                firstHalf[j],
+                secondHalf[j],
+                undefined,
+                false
               );
-              console.log("--------------------------------");
-              console.log("--------------------------------");
-
-              const lastChanceTime = times.filter(
-                (t) => t !== firstHalfTime && secondHalfTime
-              )[Math.floor(Math.random() * (times.length - 2))];
-
-              round.push([lastChanceTime, [secondHalf[j], firstHalf[j]]]);
             }
+
+            // If still no valid times, get least conflicting time
+            const firstHalfTime =
+              validTimesForFirst.length > 0
+                ? validTimesForFirst[
+                    Math.floor(Math.random() * validTimesForFirst.length)
+                  ]
+                : getLeastConflictingTime(firstHalf[j], secondHalf[j]);
+
+            // Similar process for second match
+            let validTimesForSecond = getValidTimes(
+              firstHalf[j],
+              secondHalf[j],
+              firstHalfTime
+            ).filter((time) => Math.abs(time - firstHalfTime) >= TIME_BUFFER);
+
+            if (validTimesForSecond.length === 0) {
+              validTimesForSecond = getValidTimes(
+                firstHalf[j],
+                secondHalf[j],
+                firstHalfTime,
+                false
+              );
+            }
+
+            const secondHalfTime =
+              validTimesForSecond.length > 0
+                ? validTimesForSecond[
+                    Math.floor(Math.random() * validTimesForSecond.length)
+                  ]
+                : getLeastConflictingTime(
+                    firstHalf[j],
+                    secondHalf[j],
+                    firstHalfTime
+                  );
+
+            // Add matches to round
+            round.push([firstHalfTime, [firstHalf[j], secondHalf[j]]]);
+            round.push([secondHalfTime, [secondHalf[j], firstHalf[j]]]);
+
+            // Update team schedules
+            teamSchedules[firstHalf[j]].push(firstHalfTime, secondHalfTime);
+            teamSchedules[secondHalf[j]].push(firstHalfTime, secondHalfTime);
           }
         }
 
-        schedule.push(this.shuffle(round).toSorted((a, b) => b[0] - a[0]));
+        // Sort matches within round by time
+        schedule.push(round.sort((a, b) => a[0] - b[0]));
         teamsList.splice(1, 0, teamsList.pop()!);
       }
 
-      const flatten = this.shuffle(flattenArray(schedule));
-      let unflatten = unflattenArray(flatten, schedule[0].length);
-
-      const sorted = unflatten.map((__schedule) => {
-        return __schedule.toSorted((a, b) => a[0] - b[0]);
+      globalSchedule.push({
+        league: league.name,
+        schedule: schedule.map((round) => round.sort((a, b) => a[0] - b[0])),
       });
-
-      globalSchedule.push({ league: league.name, schedule: sorted });
     }
 
     return globalSchedule;
