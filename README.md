@@ -1,15 +1,13 @@
-# ts_football_simulate
+This is a TypeScript project, for simulating full football seasons. and matches.
+for the Skipp betting app
 
-To install dependencies:
+## CHECK OUT SKIPP
 
-```bash
-bun install
-```
+[https://github.com/Ableez/skipp](https://github.com/Ableez/skipp)
 
-To run:
+## TODO
 
-```bash
-bun run index.ts
-```
-
-This project was created using `bun init` in bun v1.1.5. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
+- add a global season simulator
+- enhance match games to be more realistic
+- stream each players position on the pitch
+- stream season data thru an api
