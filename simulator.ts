@@ -1,42 +1,136 @@
-import { League } from "./libs/league";
-import type { PlayerStats } from "./types/types";
+import { times } from "./configs/fixtures.config";
+import { leagues } from "./configs/league.configs";
+import { flattenArray, unflattenArray } from "./utils/array-manim";
 
 export class LeagueSimulator {
-  static readonly WELCOME_MESSAGE = `
-    Please enter the league you would like to simulate:
-    `;
+  private schedule: {
+    league: string;
+    schedule: [number, [string, string]][][];
+  }[];
 
-  static readonly LEAGUES_MESSAGE = `
-        1 - La Liga Santander
-        2 - Premier League
-        3 - Bundesliga
-        4 - Seria A
-        5 - Ligue 1
-    `;
-
-  static getLeagueInput(): Promise<number> {
-    return new Promise((resolve, reject) => {
-      const input = prompt(LeagueSimulator.LEAGUES_MESSAGE);
-      const num = parseInt(input || "");
-
-      if (num && [1, 2, 3, 4, 5].includes(num)) {
-        resolve(num);
-      } else {
-        console.log("Please enter a valid input!");
-        LeagueSimulator.getLeagueInput().then(resolve).catch(reject);
-      }
-    });
+  constructor() {
+    this.schedule = this.createBalancedRoundRobin();
   }
 
-  static async run(playersData: PlayerStats[]): Promise<void> {
-    console.log(LeagueSimulator.WELCOME_MESSAGE);
-    // const leagueNo = await LeagueSimulator.getLeagueInput();
-    const league = new League(2, playersData);
-    league.simulateLeague();
+  private shuffle = <T>(array: T[]): T[] => {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
+
+  sortByTime(
+    scheduleParam?: {
+      league: string;
+      schedule: [number, [string, string]][][];
+    }[],
+    order?: "desc" | "asc"
+  ): {
+    league: string;
+    schedule: [number, [string, string]][][];
+  }[] {
+    const arr = [];
+    const activeArr = scheduleParam ?? this.schedule;
+
+    for (const league of activeArr) {
+      const flat = flattenArray(league.schedule);
+      const sorted = unflattenArray(
+        flat.toSorted((a, b) => (order === "desc" ? b[0] - a[0] : a[0] - b[0])),
+        league.schedule.length
+      );
+
+      arr.push({ league: league.league, schedule: sorted });
+    }
+
+    return arr;
+  }
+
+  private createBalancedRoundRobin(): {
+    league: string;
+    schedule: [number, [string, string]][][];
+  }[] {
+    let arr = [];
+    for (const lg of Object.keys(leagues)) {
+      arr.push(leagues[lg as keyof typeof leagues]);
+    }
+
+    const globalSchedule = [];
+
+    for (const league of arr) {
+      const schedule: [number, [string, string]][][] = [];
+
+      let teamsList = this.shuffle(league.teams);
+      if (teamsList.length % 2 === 1) {
+        teamsList.push("BYE");
+      }
+
+      const teamCount = teamsList.length;
+      const mid = teamCount / 2;
+
+      for (let i = 0; i < teamCount - 1; i++) {
+        const round: [number, [string, string]][] = [];
+        const firstHalf = teamsList.slice(0, mid);
+        const secondHalf = teamsList.slice(mid).reverse();
+
+        for (let j = 0; j < mid; j++) {
+          if (firstHalf[j] !== "BYE" && secondHalf[j] !== "BYE") {
+            const firstHalfTime =
+              times[Math.floor(Math.random() * times.length)];
+
+            const secondHalfTime = times.filter((t) => t !== firstHalfTime)[
+              Math.floor(Math.random() * (times.length - 1))
+            ];
+
+            round.push([firstHalfTime, [firstHalf[j], secondHalf[j]]]);
+            if (
+              `${secondHalfTime}_${secondHalf[j]}` !==
+              `${firstHalfTime}_${firstHalf[j]}`
+            ) {
+              round.push([secondHalfTime, [secondHalf[j], firstHalf[j]]]);
+            } else {
+              console.log("--------------------------------");
+              console.log("--------------------------------");
+              console.log(
+                "CAUGHT A COPYCAT!!!",
+                `${secondHalfTime}_${secondHalf[j]}`,
+                `${firstHalfTime}_${firstHalf[j]}`
+              );
+              console.log("--------------------------------");
+              console.log("--------------------------------");
+
+              const lastChanceTime = times.filter(
+                (t) => t !== firstHalfTime && secondHalfTime
+              )[Math.floor(Math.random() * (times.length - 2))];
+
+              round.push([lastChanceTime, [secondHalf[j], firstHalf[j]]]);
+            }
+          }
+        }
+
+        schedule.push(this.shuffle(round).toSorted((a, b) => b[0] - a[0]));
+        teamsList.splice(1, 0, teamsList.pop()!);
+      }
+
+      const flatten = this.shuffle(flattenArray(schedule));
+      let unflatten = unflattenArray(flatten, schedule[0].length);
+
+      const sorted = unflatten.map((__schedule) => {
+        return __schedule.toSorted((a, b) => a[0] - b[0]);
+      });
+
+      globalSchedule.push({ league: league.name, schedule: sorted });
+    }
+
+    return globalSchedule;
+  }
+
+  run() {
+    // console.log("GLOBAL SCHEDULE: ", this.createBalancedRoundRobin());
+    Bun.write("./schedule.json", `\n${JSON.stringify(this.schedule)}`);
   }
 }
-
-
 
 // TODO: implement a global season simulator
 
@@ -54,4 +148,5 @@ export class LeagueSimulator {
 //     this.schedule = [];
 //     this.leagues = leagues;
 //   }
+// } }
 // }

@@ -3,4 +3,6 @@ import type { PlayerStats } from "./types/types";
 import { LeagueSimulator } from "./simulator";
 import player from "./configs/players.json";
 
-LeagueSimulator.run(player as PlayerStats[]);
+const lg = new LeagueSimulator();
+
+lg.run();

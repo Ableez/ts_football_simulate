@@ -173,6 +173,9 @@ export class League {
   simulateLeague(): void {
     // while (this.week < this.schedule.length) {
 
+    console.log();
+    console.log();
+    console.log("-----------------------------------------------------");
     console.log("WEEK'S SCHEDULE: ", this.schedule);
     // this.simulateWeek();
     // this.showLeagueTable();
